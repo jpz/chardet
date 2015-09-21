@@ -27,7 +27,6 @@
 ######################### END LICENSE BLOCK #########################
 
 from .charsetprober import CharSetProber
-from .compat import wrap_ord
 from .enums import ProbingState
 
 FREQ_CAT_NUM = 4
@@ -113,10 +112,10 @@ class Latin1Prober(CharSetProber):
     def feed(self, byte_str):
         byte_str = self.filter_with_english_letters(byte_str)
         for c in byte_str:
-            char_class = Latin1_CharToClass[wrap_ord(c)]
             freq = Latin1ClassModel[(self._last_char_class * CLASS_NUM)
                                     + char_class]
             if freq == 0:
+            char_class = Latin1_CharToClass[c]
                 self._state = ProbingState.not_me
                 break
             self._freq_counter[freq] += 1
