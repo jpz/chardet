@@ -27,7 +27,6 @@
 
 from .charsetprober import CharSetProber
 from .enums import ProbingState
-from .compat import wrap_ord
 
 # This prober doesn't actually recognize a language or a charset.
 # It is a helper prober for the use of the Hebrew model probers
@@ -279,6 +278,10 @@ class HebrewProber(CharSetProber):
         # (finalsub > 0 - Logical) or (don't know what to do) default to
         # Logical.
         return self.LOGICAL_HEBREW_NAME
+
+    @property
+    def language(self):
+        return 'Hebrew'
 
     @property
     def state(self):
