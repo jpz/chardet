@@ -20,7 +20,6 @@ from nose.tools import eq_, assert_raises
 import chardet
 
 
-EQUIVALENT_ENCODINGS = {'latin1': 'windows-1252'}
 # TODO: Restore Hungarian encodings (iso-8859-2 and windows-1250) after we
 #       retrain model.
 MISSING_ENCODINGS = set(['iso-8859-2', 'iso-8859-6', 'windows-1250',
@@ -40,18 +39,22 @@ def check_file_encoding(file_name, encoding):
             detected_unicode = input_bytes.decode(result['encoding'])
         except (LookupError, UnicodeDecodeError):
             detected_unicode = ''
-    encoding = EQUIVALENT_ENCODINGS.get(encoding, encoding)
-    if result['encoding'].lower() != encoding:
-        wrapped_expected = '\n'.join(textwrap.wrap(expected_unicode, 100)) + '\n'
-        wrapped_detected = '\n'.join(textwrap.wrap(detected_unicode, 100)) + '\n'
+    encoding_match = result['encoding'].lower() == encoding
+    # Only care about mismatches that would actually result in different
+    # behavior when decoding
+    if not encoding_match and expected_unicode != detected_unicode:
+        wrapped_expected = '\n'.join(textwrap.wrap(expected_unicode, 130)) + '\n'
+        wrapped_detected = '\n'.join(textwrap.wrap(detected_unicode, 130)) + '\n'
         diff = ''.join(ndiff(wrapped_expected.splitlines(True),
                              wrapped_detected.splitlines(True)))
     else:
         diff = ''
-    eq_(result['encoding'].lower(), encoding,
-        ("Expected %s, but got %s for %s.  Character differences: \n%s" %
-         (encoding, result['encoding'], file_name, diff)))
-
+        encoding_match = True
+    eq_(encoding_match, True, ("Expected %s, but got %s for %s.  Character "
+                               "differences: \n%s" % (encoding,
+                                                      result['encoding'],
+                                                      file_name,
+                                                      diff)))
 
 
 def test_encoding_detection():
