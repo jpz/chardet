@@ -27,19 +27,15 @@
 ######################### END LICENSE BLOCK #########################
 
 from .charsetprober import CharSetProber
-from .enums import ProbingState
+from .enums import CharacterCategory, ProbingState, SequenceLikelihood
 
 FREQ_CAT_NUM = 4
 
-UDF = 0  # undefined
-OTH = 1  # other
-ASC = 2  # ascii capital letter
-ASS = 3  # ascii small letter
-ACV = 4  # accent capital vowel
-ACO = 5  # accent capital other
-ASV = 6  # accent small vowel
-ASO = 7  # accent small other
-CLASS_NUM = 8  # total classes
+CTR = CharacterCategory.CONTROL
+DIG = CharacterCategory.DIGIT
+SYM = CharacterCategory.SYMBOL
+CRF = CharacterCategory.LINE_BREAK
+UDF = CharacterCategory.UNDEFINED
 
 Latin1_CharToClass = (
     OTH, OTH, OTH, OTH, OTH, OTH, OTH, OTH,   # 00 - 07
@@ -116,7 +112,8 @@ class Latin1Prober(CharSetProber):
                                     + char_class]
             if freq == 0:
             char_class = Latin1_CharToClass[c]
-                self._state = ProbingState.not_me
+            if char_class == UDF:
+                self._state = ProbingState.NOT_ME
                 break
             self._freq_counter[freq] += 1
             self._last_char_class = char_class

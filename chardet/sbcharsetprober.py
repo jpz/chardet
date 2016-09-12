@@ -26,18 +26,26 @@
 # 02110-1301  USA
 ######################### END LICENSE BLOCK #########################
 
+from collections import namedtuple
+
 from .charsetprober import CharSetProber
-from .enums import ProbingState
+from .enums import CharacterCategory, ProbingState, SequenceLikelihood
+
+
+SingleByteCharSetModel = namedtuple('SingleByteCharSetModel',
+                                    ['charset_name',
+                                     'language',
+                                     'char_to_order_map',
+                                     'language_model',
+                                     'typical_positive_ratio',
+                                     'keep_ascii_letters',
+                                     'alphabet_size'])
 
 
 class SingleByteCharSetProber(CharSetProber):
-    SAMPLE_SIZE = 64
-    SB_ENOUGH_REL_THRESHOLD = 1024
+    SB_ENOUGH_REL_THRESHOLD = 1024  #  0.25 * SAMPLE_SIZE^2
     POSITIVE_SHORTCUT_THRESHOLD = 0.95
     NEGATIVE_SHORTCUT_THRESHOLD = 0.05
-    SYMBOL_CAT_ORDER = 250
-    NUMBER_OF_SEQ_CAT = 4
-    POSITIVE_CAT = NUMBER_OF_SEQ_CAT - 1
 
     def __init__(self, model, reversed=False, name_prober=None):
         super(SingleByteCharSetProber, self).__init__()
@@ -57,7 +65,7 @@ class SingleByteCharSetProber(CharSetProber):
         super(SingleByteCharSetProber, self).reset()
         # char order of last character
         self._last_order = 255
-        self._seq_counters = [0] * self.NUMBER_OF_SEQ_CAT
+        self._seq_counters = [0] * SequenceLikelihood.get_num_categories()
         self._total_seqs = 0
         self._total_char = 0
         # characters that fall in our sampling range
@@ -68,52 +76,64 @@ class SingleByteCharSetProber(CharSetProber):
         if self._name_prober:
             return self._name_prober.charset_name
         else:
-            return self._model['charset_name']
+            return self._model.charset_name
+
+    @property
+    def language(self):
+        if self._name_prober:
+            return self._name_prober.language
+        else:
+            return self._model.get('language')
 
     def feed(self, byte_str):
-        if not self._model['keep_english_letter']:
+        if not self._model.keep_ascii_letters:
             byte_str = self.filter_international_words(byte_str)
         if not byte_str:
             return self.state
-        char_to_order_map = self._model['char_to_order_map']
-        for i, c in enumerate(byte_str):
-            order = char_to_order_map[c] - 1
-            if order < self.SYMBOL_CAT_ORDER:
+        char_to_order_map = self._model.char_to_order_map
+        language_model = self._model.language_model
+        for char in byte_str:
+            # Order is in range 1-64 but we want 0-63 here.
+            order = char_to_order_map[char] - 1
+            if order < CharacterCategory.SYMBOL:
                 self._total_char += 1
-            if order < self.SAMPLE_SIZE:
+            # TODO: Follow uchardet's lead and discount confidence for frequent
+            #       control characters.
+            #       See https://github.com/BYVoid/uchardet/commit/55b4f23971db61
+            if order < self._model.alphabet_size:
                 self._freq_char += 1
-                if self._last_order < self.SAMPLE_SIZE:
+                if self._last_order < self._model.alphabet_size:
                     self._total_seqs += 1
                     if not self._reversed:
-                        i = (self._last_order * self.SAMPLE_SIZE) + order
-                        model = self._model['precedence_matrix'][i]
-                    else:  # reverse the order of the letters in the lookup
-                        i = (order * self.SAMPLE_SIZE) + self._last_order
-                        model = self._model['precedence_matrix'][i]
-                    self._seq_counters[model] += 1
+                        lm_cat = language_model[self._last_order][order]
+                    else:
+                        lm_cat = language_model[order][self._last_order]
+                    self._seq_counters[lm_cat] += 1
             self._last_order = order
 
-        if self.state == ProbingState.detecting:
+        charset_name = self._model.charset_name
+        if self.state == ProbingState.DETECTING:
             if self._total_seqs > self.SB_ENOUGH_REL_THRESHOLD:
-                cf = self.get_confidence()
-                if cf > self.POSITIVE_SHORTCUT_THRESHOLD:
+                confidence = self.get_confidence()
+                if confidence > self.POSITIVE_SHORTCUT_THRESHOLD:
                     self.logger.debug('%s confidence = %s, we have a winner',
-                                      self._model['charset_name'], cf)
-                    self._state = ProbingState.found_it
-                elif cf < self.NEGATIVE_SHORTCUT_THRESHOLD:
+                                      charset_name, confidence)
+                    self._state = ProbingState.FOUND_IT
+                elif confidence < self.NEGATIVE_SHORTCUT_THRESHOLD:
                     self.logger.debug('%s confidence = %s, below negative '
-                                      'shortcut threshhold %s',
-                                      self._model['charset_name'], cf,
+                                      'shortcut threshhold %s', charset_name,
+                                      confidence,
                                       self.NEGATIVE_SHORTCUT_THRESHOLD)
-                    self._state = ProbingState.not_me
+                    self._state = ProbingState.NOT_ME
 
         return self.state
 
     def get_confidence(self):
         r = 0.01
         if self._total_seqs > 0:
-            r = ((1.0 * self._seq_counters[self.POSITIVE_CAT]) / self._total_seqs
-                 / self._model['typical_positive_ratio'])
+            r = ((self._seq_counters[SequenceLikelihood.POSITIVE] + 0.25 *
+                  self._seq_counters[SequenceLikelihood.NEGATIVE]) /
+                 self._total_seqs / self._model.typical_positive_ratio)
             r = r * self._freq_char / self._total_char
             if r >= 1.0:
                 r = 0.99
