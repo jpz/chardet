@@ -249,7 +249,8 @@ class UniversalDetector(object):
                         charset_name = self.ISO_WIN_MAP.get(lower_charset_name,
                                                             charset_name)
                 self.result = {'encoding': charset_name,
-                               'confidence': confidence}
+                               'confidence': confidence,
+                               'language': max_prober.language}
                 return self.result
 
         if self.logger.getEffectiveLevel() == logging.DEBUG:
